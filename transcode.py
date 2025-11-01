@@ -22,6 +22,8 @@ def main():
     env["passthrough"] = os.getenv("passthrough", "no") == "yes"
     env["restream"] = os.getenv("restream", "none")
     env["framerate"] = os.getenv("framerate", 25)
+    env["multicast_type"] = os.getenv("multicast_type", "all")  # all, slides-only
+    env["multicast_sink"] = os.getenv("multicast_sink") 
     env["vaapi_dev"], env["vaapi_driver"], env["vaapi_features"] = select_vaapi_dev()
     # env["icecast_password"] = config.icecast_password
     if hasattr(config, "upload_user"):
@@ -475,6 +477,10 @@ def transcode_h264(env, probed, hd_input="0:v:0", sd_input="[sd_h264]", use_vaap
         res += [
             output_restream(env, probed),
         ]
+    if env["multicast_sink"] is not None:
+        res += [
+            output_multicast(env, probed, hd_input)
+        ]
     return res
 
 
@@ -719,6 +725,22 @@ def output_restream(env, probed):
         return f"""
         -c:a copy -map 0:a:0
         -f flv {env['restream']}
+        """
+
+def output_multicast(env, probed, hd_input):
+    if env["multicast_type"] != "slides-only":
+        audio_tracks = []
+        for index, track in enumerate(probed["audios"]):
+            audio_tracks += [_h264_audio_track(track, index, index)]
+        return f"""
+        -c:v copy -map {hd_input} -map 0:v:1?
+        {' '.join(audio_tracks)}
+        -f mpegts udp://{env['multicast_sink']}
+        """
+    else:
+        return f"""
+        -c:v copy -map 0:v:1?
+        -f mpegts udp://{env['multicast_sink']}
         """
 
 ######
